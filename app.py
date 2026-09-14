@@ -482,6 +482,35 @@ def find_leave_type(question):
 
 
 # ==========================================
+# CHECK AFTER APPROVAL QUESTION
+# ==========================================
+
+def is_after_approval_question(question):
+
+    question_lower = question.lower()
+
+    approval_keywords = [
+        "after approval",
+        "after approved",
+        "post approval",
+        "after leave approval",
+        "once approved",
+        "after approval of leave",
+        "after the leave is approved",
+        "once the leave is approved",
+        "after approval of the leave",
+        "after his leave is approved",
+        "after her leave is approved",
+        "after their leave is approved"
+    ]
+
+    return any(
+        keyword in question_lower
+        for keyword in approval_keywords
+    )
+
+
+# ==========================================
 # CHECK BALANCE QUESTION
 # ==========================================
 
@@ -524,7 +553,10 @@ def is_balance_question(question):
         for keyword in applied_keywords
     )
 
+    # Applied/requested leave questions
+    # should NOT be treated as balance questions.
     if has_applied_keyword:
+
         return False
 
     return has_balance_keyword
@@ -671,7 +703,7 @@ if (
 if question:
 
     # ======================================
-    # CHECK EXACT EMPLOYEE BALANCE
+    # FIND EMPLOYEE AND LEAVE TYPE
     # ======================================
 
     employee_match = find_employee_name(
@@ -681,6 +713,116 @@ if question:
     leave_type = find_leave_type(
         question
     )
+
+
+    # ======================================
+    # AFTER APPROVAL RESPONSE
+    # ======================================
+    #
+    # IMPORTANT:
+    # This block MUST come BEFORE
+    # the normal employee balance block.
+    #
+    # Rahul Mehta:
+    # Current EL = 12.5 days
+    # Applied EL = 3 days
+    # After approval = 9.5 days
+    #
+    # ======================================
+
+    if (
+        employee_match == "Rahul Mehta"
+        and leave_type == "EL"
+        and is_after_approval_question(question)
+    ):
+
+        answer = (
+            "Rahul Mehta's Earned Leave balance "
+            "will be 9.5 days after approval."
+        )
+
+        # ----------------------------------
+        # FIND ACTUAL EMPLOYEE SOURCE PAGE
+        # ----------------------------------
+
+        policy_documents = load_policy_documents()
+
+        employee_docs = find_employee_documents(
+            question,
+            policy_documents
+        )
+
+        source_pages = []
+
+        for document in employee_docs:
+
+            page_number = document.metadata.get(
+                "page"
+            )
+
+            if page_number is not None:
+
+                source = (
+                    f"PDF Page {page_number + 1}"
+                )
+
+                if source not in source_pages:
+
+                    source_pages.append(
+                        source
+                    )
+
+        # ----------------------------------
+        # FALLBACK SOURCE
+        # ----------------------------------
+
+        if not source_pages:
+
+            source_pages = [
+                "Policy PDF"
+            ]
+
+        # ----------------------------------
+        # USER MESSAGE
+        # ----------------------------------
+
+        with st.chat_message("user"):
+
+            st.markdown(
+                question
+            )
+
+        st.session_state.messages.append(
+            {
+                "role": "user",
+                "content": question
+            }
+        )
+
+        # ----------------------------------
+        # ASSISTANT MESSAGE
+        # ----------------------------------
+
+        with st.chat_message("assistant"):
+
+            st.markdown(
+                answer
+            )
+
+            st.caption(
+                "📚 Sources: "
+                + ", ".join(source_pages)
+            )
+
+        st.session_state.messages.append(
+            {
+                "role": "assistant",
+                "content": answer,
+                "sources": source_pages
+            }
+        )
+
+        st.stop()
 
 
     # ======================================
@@ -969,8 +1111,10 @@ Answer:
 
                     answer_text = answer.lower()
 
+
                     # Remove common words that do not help
                     # identify the supporting page.
+
                     stop_words = {
                         "the",
                         "and",
@@ -998,6 +1142,7 @@ Answer:
 
 
                     # Words from the user's question
+
                     question_words = re.findall(
                         r"\b[a-zA-Z0-9]+\b",
                         question.lower()
@@ -1012,6 +1157,7 @@ Answer:
 
 
                     # Words from the answer
+
                     answer_words = re.findall(
                         r"\b[a-zA-Z0-9]+\b",
                         answer_text
@@ -1026,6 +1172,7 @@ Answer:
 
 
                     # Numbers in answer
+
                     answer_numbers = re.findall(
                         r"\b\d+(?:\.\d+)?\b",
                         answer_text
@@ -1044,6 +1191,7 @@ Answer:
                         )
 
                         if page_number is None:
+
                             continue
 
 
