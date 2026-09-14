@@ -1,7 +1,6 @@
 import os
 import re
 
-
 import streamlit as st
 from dotenv import load_dotenv
 from langchain_community.document_loaders import PyPDFLoader
@@ -27,6 +26,7 @@ CHROMA_PATH = "chroma_db"
 
 EMBEDDING_MODEL = "sentence-transformers/all-MiniLM-L6-v2"
 GROQ_MODEL = "openai/gpt-oss-20b"
+
 
 # ==========================================
 # STREAMLIT PAGE
@@ -742,9 +742,6 @@ if question:
                 "Policy PDF"
             ]
 
-        # Display maximum 2 source pages; RAG retrieval remains unchanged.
-        source_pages = source_pages[:2]
-
 
         # ======================================
         # USER MESSAGE
@@ -917,29 +914,6 @@ if question:
 
                 source_pages = []
 
-                for document in retrieved_docs:
-
-                    page_number = (
-                        document.metadata.get(
-                            "page"
-                        )
-                    )
-
-                    if page_number is not None:
-
-                        source = (
-                            f"PDF Page {page_number + 1}"
-                        )
-
-                        if source not in source_pages:
-
-                            source_pages.append(
-                                source
-                            )
-
-
-                # Display maximum 2 source pages; RAG retrieval remains unchanged.
-                source_pages = source_pages[:2]
 
                 # ----------------------------------
                 # PROMPT
@@ -988,6 +962,204 @@ Answer:
 
                     answer = response.content
 
+
+                    # ==================================
+                    # RELEVANT SOURCE PAGE SELECTION
+                    # ==================================
+
+                    answer_text = answer.lower()
+
+                    # Remove common words that do not help
+                    # identify the supporting page.
+                    stop_words = {
+                        "the",
+                        "and",
+                        "are",
+                        "is",
+                        "was",
+                        "were",
+                        "for",
+                        "from",
+                        "with",
+                        "this",
+                        "that",
+                        "what",
+                        "how",
+                        "many",
+                        "days",
+                        "day",
+                        "per",
+                        "year",
+                        "leave",
+                        "policy",
+                        "available",
+                        "employee"
+                    }
+
+
+                    # Words from the user's question
+                    question_words = re.findall(
+                        r"\b[a-zA-Z0-9]+\b",
+                        question.lower()
+                    )
+
+                    question_words = [
+                        word
+                        for word in question_words
+                        if len(word) > 2
+                        and word not in stop_words
+                    ]
+
+
+                    # Words from the answer
+                    answer_words = re.findall(
+                        r"\b[a-zA-Z0-9]+\b",
+                        answer_text
+                    )
+
+                    answer_words = [
+                        word
+                        for word in answer_words
+                        if len(word) > 2
+                        and word not in stop_words
+                    ]
+
+
+                    # Numbers in answer
+                    answer_numbers = re.findall(
+                        r"\b\d+(?:\.\d+)?\b",
+                        answer_text
+                    )
+
+
+                    scored_sources = []
+
+
+                    for document in retrieved_docs:
+
+                        page_number = (
+                            document.metadata.get(
+                                "page"
+                            )
+                        )
+
+                        if page_number is None:
+                            continue
+
+
+                        page_text = (
+                            document.page_content.lower()
+                        )
+
+
+                        score = 0
+
+
+                        # ----------------------------------
+                        # QUESTION WORD MATCH
+                        # ----------------------------------
+
+                        for word in question_words:
+
+                            if word in page_text:
+
+                                score += 3
+
+
+                        # ----------------------------------
+                        # ANSWER WORD MATCH
+                        # ----------------------------------
+
+                        for word in answer_words:
+
+                            if word in page_text:
+
+                                score += 2
+
+
+                        # ----------------------------------
+                        # ANSWER NUMBER MATCH
+                        # ----------------------------------
+
+                        for number in answer_numbers:
+
+                            if number in page_text:
+
+                                score += 6
+
+
+                        scored_sources.append(
+                            (
+                                score,
+                                page_number
+                            )
+                        )
+
+
+                    # ----------------------------------
+                    # SORT BY SUPPORT SCORE
+                    # ----------------------------------
+
+                    scored_sources.sort(
+                        key=lambda item: item[0],
+                        reverse=True
+                    )
+
+
+                    # ----------------------------------
+                    # SELECT ONLY STRONGEST SOURCE
+                    # ----------------------------------
+
+                    if scored_sources:
+
+                        best_score = (
+                            scored_sources[0][0]
+                        )
+
+                        if best_score > 0:
+
+                            best_page = (
+                                scored_sources[0][1]
+                            )
+
+                            source_pages = [
+                                f"PDF Page {best_page + 1}"
+                            ]
+
+
+                    # ----------------------------------
+                    # FALLBACK
+                    # ----------------------------------
+
+                    if not source_pages:
+
+                        if retrieved_docs:
+
+                            page_number = (
+                                retrieved_docs[0]
+                                .metadata
+                                .get("page")
+                            )
+
+                            if page_number is not None:
+
+                                source_pages = [
+                                    f"PDF Page {page_number + 1}"
+                                ]
+
+                            else:
+
+                                source_pages = [
+                                    "Policy PDF"
+                                ]
+
+                        else:
+
+                            source_pages = [
+                                "Policy PDF"
+                            ]
+
+
                 except Exception as e:
 
                     answer = (
@@ -1013,7 +1185,6 @@ Answer:
         # ======================================
         # SHOW SOURCES
         # ======================================
-        source_pages = source_pages[:2]
 
         if source_pages:
 
@@ -1034,4 +1205,3 @@ Answer:
             "sources": source_pages
         }
     )
-
