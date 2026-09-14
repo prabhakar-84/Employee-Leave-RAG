@@ -1,6 +1,7 @@
 import os
 import re
 
+
 import streamlit as st
 from dotenv import load_dotenv
 from langchain_community.document_loaders import PyPDFLoader
@@ -26,7 +27,6 @@ CHROMA_PATH = "chroma_db"
 
 EMBEDDING_MODEL = "sentence-transformers/all-MiniLM-L6-v2"
 GROQ_MODEL = "openai/gpt-oss-20b"
-
 
 # ==========================================
 # STREAMLIT PAGE
@@ -482,6 +482,55 @@ def find_leave_type(question):
 
 
 # ==========================================
+# CHECK BALANCE QUESTION
+# ==========================================
+
+def is_balance_question(question):
+
+    question_lower = question.lower()
+
+    balance_keywords = [
+        "balance",
+        "remaining",
+        "remain",
+        "available",
+        "left",
+        "how much leave do",
+        "how many leave do",
+        "how many days do"
+    ]
+
+    applied_keywords = [
+        "apply",
+        "applied",
+        "applying",
+        "request",
+        "requested",
+        "requesting",
+        "took",
+        "taken",
+        "used",
+        "use",
+        "approved leave"
+    ]
+
+    has_balance_keyword = any(
+        keyword in question_lower
+        for keyword in balance_keywords
+    )
+
+    has_applied_keyword = any(
+        keyword in question_lower
+        for keyword in applied_keywords
+    )
+
+    if has_applied_keyword:
+        return False
+
+    return has_balance_keyword
+
+
+# ==========================================
 # SUGGESTED QUESTIONS
 # ==========================================
 
@@ -638,7 +687,11 @@ if question:
     # EXACT EMPLOYEE BALANCE RESPONSE
     # ======================================
 
-    if employee_match and leave_type:
+    if (
+        employee_match
+        and leave_type
+        and is_balance_question(question)
+    ):
 
         answer = (
             f"{employee_match}'s "
@@ -688,6 +741,9 @@ if question:
             source_pages = [
                 "Policy PDF"
             ]
+
+        # Display maximum 2 source pages; RAG retrieval remains unchanged.
+        source_pages = source_pages[:2]
 
 
         # ======================================
@@ -882,6 +938,9 @@ if question:
                             )
 
 
+                # Display maximum 2 source pages; RAG retrieval remains unchanged.
+                source_pages = source_pages[:2]
+
                 # ----------------------------------
                 # PROMPT
                 # ----------------------------------
@@ -954,6 +1013,7 @@ Answer:
         # ======================================
         # SHOW SOURCES
         # ======================================
+        source_pages = source_pages[:2]
 
         if source_pages:
 
@@ -974,3 +1034,4 @@ Answer:
             "sources": source_pages
         }
     )
+
